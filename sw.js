@@ -1,5 +1,5 @@
 // Service Worker for Samurai Cricket Club PWA
-const CACHE_NAME = 'samurai-cc-v2';
+const CACHE_NAME = 'samurai-cc-v4';
 const ASSETS = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', (e) => {

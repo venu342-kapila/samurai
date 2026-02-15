@@ -600,13 +600,15 @@
     // ── State ───────────────────────────────────────────────
     let transactions = [];
     let members = [];
+    // Hardcoded API URL — this is the single source of truth. Settings can override it, but it always falls back here.
+    const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbwTTXPt0rVbfRji69gcAsSuQChWJD3Rch09TjAJQxD8yt4us6XqrsK00zHN0rrxjUz9/exec';
     let settings = {
-      apiUrl: 'https://script.google.com/macros/s/AKfycbwTTXPt0rVbfRji69gcAsSuQChWJD3Rch09TjAJQxD8yt4us6XqrsK00zHN0rrxjUz9/exec',
+      apiUrl: DEFAULT_API_URL,
       defaultRecorder: '',
       currency: '₹'
     };
     let currentFilter = 'All';
-    let isCloudMode = false;
+    let isCloudMode = true;
 
     // ── Init ────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', () => {
@@ -628,7 +630,13 @@
     function loadSettings() {
       const saved = localStorage.getItem('samurai_settings');
       if (saved) {
-        settings = { ...settings, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        // Only override apiUrl if the saved value is non-empty; otherwise keep hardcoded default
+        settings.defaultRecorder = parsed.defaultRecorder || '';
+        settings.currency = parsed.currency || '₹';
+        if (parsed.apiUrl && parsed.apiUrl.trim()) {
+          settings.apiUrl = parsed.apiUrl.trim();
+        }
       }
       isCloudMode = !!settings.apiUrl;
       document.getElementById('apiUrl').value = settings.apiUrl || '';
@@ -691,23 +699,26 @@
     }
 
     // ── Cloud Sync ──────────────────────────────────────────
-    // ALL operations use GET to avoid CORS issues with Google Apps Script
-    async function apiCall(action, params = {}) {
-      if (!settings.apiUrl) return null;
-      try {
-        const url = new URL(settings.apiUrl);
-        url.searchParams.set('action', action);
-        Object.entries(params).forEach(([key, val]) => {
-          if (val !== undefined && val !== null && val !== '') {
-            url.searchParams.set(key, String(val));
-          }
+    // All operations use GET requests for CORS compatibility
+    function apiCall(action, params = {}) {
+      if (!settings.apiUrl) return Promise.resolve(null);
+
+      // Build URL with simple string concat (most compatible across browsers)
+      const parts = ['action=' + encodeURIComponent(action)];
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== '') {
+          parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(val)));
+        }
+      });
+      const separator = settings.apiUrl.includes('?') ? '&' : '?';
+      const fullUrl = settings.apiUrl + separator + parts.join('&');
+
+      return fetch(fullUrl)
+        .then(function(res) { return res.json(); })
+        .catch(function(err) {
+          console.error('API Error (' + action + '):', err);
+          return null;
         });
-        const res = await fetch(url.toString(), { redirect: 'follow' });
-        return await res.json();
-      } catch (err) {
-        console.error('API Error:', err);
-        return null;
-      }
     }
 
     async function syncFromCloud() {
